@@ -1,0 +1,101 @@
+defaults:
+  - commons
+  - scheduler: constant_schedule_with_warmup
+  - optimizer: adamw
+  - _self_
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: ${sft_model}
+  model_max_length: 2048
+  pad_token: <pad>
+
+model:
+  _target_: xgpt.tasks.reinforcement_learning.PPOTransformer
+  _recursive_: false  # don't instantiate the attributes with "_target_" yet; they're handled in the code
+  init_adapter_path: ${init_adapter_path}  # set this for convenient inferences
+  rm_adapter_path: ${rm_adapter_path}
+  mean_reward: ${mean_reward} # mean RM scores on the target domain 
+  generate_references: false  # enable this will generate and log reference responses, so slowing down the training
+  use_peft: true
+  stop_sequence: '"""'
+  actor:
+    _target_: transformers.AutoModelForCausalLM.from_pretrained
+    pretrained_model_name_or_path: ${tokenizer.pretrained_model_name_or_path}
+    load_in_8bit: false
+    load_in_4bit: true
+  
+  reward_model:
+    _target_: xgpt.models.BloomComparisonsRewardModel.from_pretrained
+    pretrained_model_name_or_path: ${reward_model}
+    load_in_8bit: false
+    load_in_4bit: true
+
+  rm_tokenizer:
+    _target_: transformers.AutoTokenizer.from_pretrained
+    pretrained_model_name_or_path: ${model.reward_model.pretrained_model_name_or_path}
+
+  gradient_checkpointing: true
+  deepspeed_sharding: false
+  scheduler_monitor: training/val_reward
+  scheduler_mode: max
+  optimizer: ${optimizer}
+  scheduler: ${scheduler}
+  ppo_config:
+    _target_: xgpt.core.ppo_config.PPOConfig
+    mini_batch_size: 1
+    rollout_batch_size: 8
+    gradient_accumulation_steps: 8
+    max_grad_norm: 0.1
+    target_kl: 0.015
+  
+  lora_config:
+    _target_: peft.LoraConfig
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: none
+    task_type: CAUSAL_LM
+
+  generation_kwargs:
+    max_new_tokens: 256
+    top_k: 0.0
+    top_p: 1.0
+    do_sample: true
+
+data_module:
+  _target_: xgpt.tasks.reinforcement_learning.BasicDataModule
+  train_val_split: 0.1 # ratio of validation set, only used when the validation set is absent 
+  from_hf_hub: false # when false, use the dataset script in the ./datasets dir of the _target_ 
+  batch_size: 16
+  padding: false # sequences are padded by the collator 
+  max_length: 768
+  drop_long_seq: true
+  datasets_config: # configs that'll be passed to load_dataset as they are
+    path: webgpt_comparisons
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: gpu
+  devices: 1
+  max_epochs: 100
+  val_check_interval: 0.1
+  num_sanity_val_steps: 0
+  limit_val_batches: 5
+  # precision: 16
+  strategy: deepspeed_stage_2 # deepspeed_stage_3_offload
+  log_every_n_steps: 1
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: rlhf-ppo
+  name: null
+
+training:
+  run_test_after_fit: true
+  lr: 5e-7 # non-peft training may need a much smaller lr, such as 1e-8
+  save_top_k: 1
+
+ckpt_format: 'epoch{epoch:02d}-val_reward{${model.scheduler_monitor}:.2f}'
+stage: train # choose in {train, valid, test}
+seed: 33

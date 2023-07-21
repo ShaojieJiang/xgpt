@@ -1,0 +1,82 @@
+defaults:
+  - commons
+  - scheduler: constant_schedule_with_warmup
+  - optimizer: adamw
+  - _self_
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: ${base_model}
+  model_max_length: 2048
+  pad_token: <pad>
+
+model:
+  _target_: xgpt.tasks.language_modeling.LanguageModelingTransformer
+  _recursive_: false  # don't instantiate the attributes with "_target_" yet; they're handled in the code
+  pretrained_model_name_or_path: ${tokenizer.pretrained_model_name_or_path}
+  downstream_model_type: transformers.AutoModelForCausalLM
+  deepspeed_sharding: true
+  gradient_checkpointing: true
+  compute_generate_metrics: true
+  limit_generate_batches: 5
+  scheduler_monitor: val_loss
+  scheduler_mode: min
+  optimizer: ${optimizer}
+  scheduler: ${scheduler}
+  use_peft: true
+
+  model_kwargs:
+    load_in_8bit: false
+    load_in_4bit: true
+
+  lora_config:
+    _target_: peft.LoraConfig
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: none
+    task_type: CAUSAL_LM
+
+  generation_kwargs:
+    top_k: 0.0
+    top_p: 0.92
+    do_sample: true
+
+data_module:
+  _target_: xgpt.tasks.language_modeling.PairedDataModule
+  train_val_split: 0.1 # ratio of validation set
+  from_hf_hub: false # when false, use the dataset script in the ./datasets dir of the _target_
+  batch_size: 3
+  padding: False # sequences are padded by the collator
+  max_length: ${tokenizer.model_max_length} # model.model.config.seq_length
+  drop_long_seq: true
+  datasets_config: # configs that'll be passed to load_dataset as they are
+    path: webgpt_comparisons
+
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: gpu
+  devices: 1
+  max_epochs: 10
+  val_check_interval: 0.1
+  gradient_clip_algorithm: norm
+  gradient_clip_val: 0.1
+  precision: 32
+  strategy: deepspeed_stage_2_offload # stage_3 
+  accumulate_grad_batches: 8
+  log_every_n_steps: 5
+  num_sanity_val_steps: 5
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: rlhf-sft
+  name: null
+
+training: 
+  run_test_after_fit: true
+  lr: 5e-5
+  save_top_k: 1
+
+stage: train # choose in {train, valid, test}
+seed: 33

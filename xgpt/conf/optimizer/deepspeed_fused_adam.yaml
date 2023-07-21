@@ -1,0 +1,2 @@
+_target_: deepspeed.ops.adam.FusedAdam
+lr: ${training.lr}

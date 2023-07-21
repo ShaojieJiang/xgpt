@@ -1,0 +1,75 @@
+defaults:
+  - commons
+  - scheduler: constant_schedule_with_warmup
+  - optimizer: adamw
+  - _self_
+
+tokenizer:
+  _target_: transformers.AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: ${rm_sft_model}
+  padding_side: right
+  model_max_length: 2048
+  pad_token: <pad>
+
+model:
+  _target_: xgpt.tasks.reward_modeling.RewardModelingTransformer
+  _recursive_: false  # don't instantiate the attributes with "_target_" yet; they're handled in the code
+  pretrained_model_name_or_path: ${tokenizer.pretrained_model_name_or_path}
+  downstream_model_type: transformers.AutoModelForSequenceClassification
+  deepspeed_sharding: true
+  gradient_checkpointing: true
+  scheduler_monitor: val_acc
+  scheduler_mode: max
+  optimizer: ${optimizer}
+  scheduler: ${scheduler}
+  use_peft: true
+
+  model_kwargs:
+    num_labels: 1
+    load_in_8bit: false
+    load_in_4bit: true
+
+  lora_config:
+    _target_: peft.LoraConfig
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    bias: none
+    task_type: SEQ_CLS
+    # modules_to_save=["score"]
+
+data_module:
+  _target_: xgpt.tasks.reward_modeling.BasicDataModule
+  train_val_split: 0.1 # ratio of validation set, only used when the validation set is absent 
+  from_hf_hub: false # when false, use the dataset script in the ./datasets dir of the _target_
+  batch_size: 8 # the actual batch size is 2x, because of paired comparisons
+  padding: false # sequences are padded by the collator
+  max_length: ${tokenizer.model_max_length} # model.model.config.seq_length
+  # drop_long_seq: true
+  datasets_config: # configs that'll be passed to load_dataset as they are
+    path: webgpt_comparisons
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: gpu
+  devices: 1
+  max_epochs: 100
+  val_check_interval: 0.1
+  gradient_clip_algorithm: norm
+  gradient_clip_val: 0.1
+  precision: 32
+  strategy: deepspeed_stage_2 # 3_offload
+  log_every_n_steps: 5
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: rlhf-rm
+  name: null
+
+training:
+  run_test_after_fit: true
+  lr: 5e-6
+  save_top_k: 1
+
+stage: train # choose in {train, valid, test}
+seed: 33

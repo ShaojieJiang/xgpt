@@ -1,0 +1,27 @@
+defaults:
+  - local_conf
+  - _self_
+
+ckpt_format: 'epoch{epoch:02d}-${model.scheduler_monitor}{${model.scheduler_monitor}:.2f}'
+
+trainer:
+  default_root_dir: ${output_dir}
+
+  callbacks:
+  # checkpoint_callback:
+  - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: ${output_dir}
+    filename: ${ckpt_format}
+    auto_insert_metric_name: False
+    monitor: ${model.scheduler_monitor}
+    mode: ${model.scheduler_mode}
+    save_last: False
+    save_top_k: ${training.save_top_k}
+  
+  # learning_rate_monitor:
+  - _target_: pytorch_lightning.callbacks.lr_monitor.LearningRateMonitor
+    logging_interval: step
+
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  save_dir: ${output_dir}

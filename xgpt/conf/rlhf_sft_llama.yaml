@@ -1,0 +1,12 @@
+defaults:
+  - rlhf_sft
+  - _self_
+
+tokenizer:
+  _target_: transformers.LlamaTokenizerFast.from_pretrained
+
+data_module:
+  max_length: 1024
+
+trainer:
+  strategy: auto

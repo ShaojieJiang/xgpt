@@ -1,0 +1,18 @@
+hydra:
+  run:
+    dir: /output_dir_base/${now:%Y-%m-%d}/${now:%H-%M-%S} # hydra config is resolved first, so can't refer to other custom variables
+  job:
+    chdir: true
+    env_set:  # this is where you set your environment variables specific to this library and your experiments
+      TOKENIZERS_PARALLELISM: True
+      # HF_HOME: /home/to/hugging_face/caches  # defaults to ~/.cache so this can blow up your home dir quickly
+  output_subdir: ${hydra:run.dir}/.hydra
+
+output_dir: ${hydra:run.dir}
+base_model: /path/to/base_model/for/finetuning
+sft_model: /path/to/sft_model/for/rm_or_ppo
+rm_sft_model: ${sft_model}
+reward_model: /path/to/rm/for/ppo
+init_adapter_path: null  # set this when you're performing evaluation on the PEFT-trained PPO model, so that you don't need to merge the adapters
+rm_adapter_path: /path/to/rm/adapters  # set this when you're using multi-adapter for training PPO models
+mean_reward: 0.0  # set this to center the RM predictions at the start of PPO training
