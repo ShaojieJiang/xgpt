@@ -1,0 +1,2 @@
+model_id: bigscience/bloom-7b1
+dst_dir: ./
