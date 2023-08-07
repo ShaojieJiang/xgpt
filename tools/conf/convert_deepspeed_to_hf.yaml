@@ -1,0 +1,14 @@
+tokenizer:
+  _target_: transformers. AutoTokenizer.from_pretrained
+  pretrained_model_name_or_path: $(model_id) # nametag for the original model, used for initialisation
+
+model: # Check the training config for the following fields 
+  _target_: $(model_target) # task model type the model was trained 
+  pretrained_model_name_or_path: ${tokenizer.pretrained_model_name_or_path}
+  downstream_model_type: ${model_type}
+  load_weights: false
+
+model_target: xgpt.tasks.text_classification.ClassificationTransformer
+model_type: xgpt.models.BloomComparisonsRewardModel
+model_id: bigscience/bloom-560m
+ckpt_path: /path/to/model/checkpoint

@@ -11,7 +11,8 @@ Features:
 
 Run `pip install -e .`
 
-Copy `xgpt/conf/local_conf_example.yaml`  to `xgpt/conf/local_conf.yaml`, and change the values accordingly
+Copy `xgpt/conf/local_conf_example.yaml`  to `xgpt/conf/local_conf.yaml`, and change the values accordingly.
+This is the machine-specific configuration file that sets the output dir, key environment variables, and model paths, etc.
 
 ## Usage
 
